@@ -68,7 +68,7 @@ export function approvePlan(state: EncounterState, planId: string, actor: string
   plan.approvedAt = now; plan.approvedBy = actor;
   event(state, actor, "dispatch", "Approved and dispatched " + plan.tasks.length + " preparation assignments. Locations reserved for this demo encounter.");
 }
-export function applyCommand(state: EncounterState, command: Exclude<Command, { action: "evaluate" | "telemetry" }>) {
+export function applyCommand(state: EncounterState, command: Exclude<Command, { action: "evaluate" | "telemetry" | "scan-access" }>) {
   const actor = command.actor;
   requireActor(state, actor);
   switch (command.action) {

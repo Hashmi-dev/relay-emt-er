@@ -12,7 +12,7 @@ config.assets.directory=resolve(root,'dist/client');
 writeFileSync(resolve(runtime,'wrangler.json'),JSON.stringify(config));
 const file=resolve(root,'.env.local');
 const values=existsSync(file)?parseEnv(readFileSync(file,'utf8')):{};
-const keys=['GEMINI_API_KEY','GEMINI_MODEL','GEMINI_MIN_INTERVAL_MS','GEMINI_RPM_LIMIT','GEMINI_RPD_LIMIT'];
+const keys=['GEMINI_API_KEY','GEMINI_MODEL','GEMINI_MIN_INTERVAL_MS','GEMINI_RPM_LIMIT','GEMINI_RPD_LIMIT','ARDUINO_DEMO_KEY'];
 writeFileSync(resolve(runtime,'.dev.vars'),keys.filter(k=>values[k]).map(k=>k+'='+JSON.stringify(values[k])).join('\n')+'\n',{mode:0o600});
 // Secrets stay in ignored runtime state, never in the packaged dist directory.
 const child=spawn(process.execPath,['--import',pathToFileURL(resolve(root,'scripts/sites-env.mjs')).href,resolve(root,'node_modules/wrangler/bin/wrangler.js'),'dev','--config',resolve(runtime,'wrangler.json'),'--local','--persist-to',resolve(root,'.wrangler/state'),'--ip','127.0.0.1','--inspector-port','0',...process.argv.slice(2)],{cwd:root,stdio:'inherit'});

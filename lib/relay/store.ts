@@ -7,7 +7,7 @@ function db(): D1Database {
   if (!env.DB) throw new RelayError("Encounter storage is unavailable. Please retry after the database is connected.", 503);
   return env.DB;
 }
-export function setting(key: "GEMINI_API_KEY" | "GEMINI_MODEL" | "GEMINI_MIN_INTERVAL_MS" | "GEMINI_RPM_LIMIT" | "GEMINI_RPD_LIMIT"): string {
+export function setting(key: "GEMINI_API_KEY" | "GEMINI_MODEL" | "GEMINI_MIN_INTERVAL_MS" | "GEMINI_RPM_LIMIT" | "GEMINI_RPD_LIMIT" | "ARDUINO_DEMO_KEY"): string {
   return env[key] || process.env[key] || "";
 }
 export function configuration() {

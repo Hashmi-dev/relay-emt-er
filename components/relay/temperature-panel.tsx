@@ -10,7 +10,7 @@ export function TemperaturePanel({ state, persona, act, disabled, onScanning }: 
   state: EncounterState; persona: string; act: (command: Command) => Promise<Snapshot>;
   disabled: boolean; onScanning: (active: boolean) => void;
 }) {
-  const [phase, setPhase] = useState<"idle" | "scanning" | "saving" | "done">("idle");
+  const [phase, setPhase] = useState<"idle" | "checking" | "scanning" | "saving" | "done">("idle");
   const [preview, setPreview] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -21,12 +21,22 @@ export function TemperaturePanel({ state, persona, act, disabled, onScanning }: 
     mounted.current = true;
     return () => { mounted.current = false; if (timer.current) clearInterval(timer.current); };
   }, []);
-  const active = phase === "scanning" || phase === "saving";
-  const scan = () => {
+  const active = phase === "checking" || phase === "scanning" || phase === "saving";
+  const scan = async () => {
     if (disabled || working.current) return;
     working.current = true;
-    const revision = state.clinicalRevision;
-    setError(""); setPhase("scanning"); setProgress(0); setPreview(sampleTemperature()); onScanning(true);
+    setError(""); setProgress(0); setPreview(null); setPhase("checking"); onScanning(true);
+    let revision: number;
+    try {
+      const next = await act({ action: "scan-access", actor: persona });
+      if (!mounted.current) return;
+      revision = next.encounter.clinicalRevision;
+    } catch (e) {
+      working.current = false;
+      if (mounted.current) { setPhase("idle"); setError(e instanceof Error ? e.message : "Arduino not found 🙂"); onScanning(false); }
+      return;
+    }
+    setPhase("scanning"); setPreview(sampleTemperature());
     const started = Date.now();
     timer.current = setInterval(() => {
       const elapsed = Date.now() - started;
@@ -41,16 +51,16 @@ export function TemperaturePanel({ state, persona, act, disabled, onScanning }: 
         .finally(() => { working.current = false; if (mounted.current) onScanning(false); });
     }, 90);
   };
-  const value = active ? preview : state.observations.at(-1)?.values.temp;
+  const value = phase === "scanning" || phase === "saving" ? preview : state.observations.at(-1)?.values.temp;
   return <section className="panel temperature-panel">
     <div className="panel-heading"><h2><Thermometer size={18}/> Temperature scan</h2><span className="pill neutral">Simulated</span></div>
     <p className="muted">Take a demo reading for the crash scenario.</p>
     <div className={"temperature-readout " + (active ? "is-scanning" : "")}>
       <div><span className="temperature-label">BODY TEMPERATURE</span><output aria-label="Demo temperature">{value == null ? "—" : value.toFixed(1)}<small>°C</small></output></div>
-      <div className="temperature-status" role="status">{phase === "scanning" ? <><LoaderCircle size={16} className="spin"/> Taking reading…</> : phase === "saving" ? <><LoaderCircle size={16} className="spin"/> Saving reading…</> : phase === "done" ? <><Check size={16}/> Reading saved</> : "Ready to scan"}</div>
+      <div className="temperature-status" role="status">{phase === "checking" ? "Checking…" : phase === "scanning" ? <><LoaderCircle size={16} className="spin"/> Taking reading…</> : phase === "saving" ? <><LoaderCircle size={16} className="spin"/> Saving reading…</> : phase === "done" ? <><Check size={16}/> Reading saved</> : "Ready to scan"}</div>
     </div>
     <div className="scan-progress" aria-hidden="true"><span style={{ width: active ? progress + "%" : "0%" }}/></div>
-    <div className="temperature-actions"><Button onClick={scan} disabled={disabled || active}>{active ? <LoaderCircle className="spin"/> : <Thermometer/>}{active ? "Scanning…" : "Take temperature"}</Button><small className="muted">Demo range 34.5–35.9°C · No sensor connected</small></div>
+    <div className="temperature-actions"><Button onClick={() => void scan()} disabled={disabled || active}>{active ? <LoaderCircle className="spin"/> : <Thermometer/>}{phase === "checking" ? "Checking…" : active ? "Scanning…" : "Take temperature"}</Button><small className="muted">Demo range 34.5–35.9°C · No sensor connected</small></div>
     {error ? <p className="inline-error" role="alert">{error} The saved temperature has not changed.</p> : null}
   </section>;
 }

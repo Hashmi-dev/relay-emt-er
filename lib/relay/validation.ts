@@ -39,6 +39,7 @@ export const commands = {
   notes: z.object({ actor, text: z.string().max(12000), age: z.number().int().min(0).max(120).nullable(), etaMinutes: z.number().int().min(0).max(240).nullable(), bloodTypeReported: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullable().optional(), expectedRevision: revision }).strict(),
   observations: z.object({ actor, values: vitalsSchema, expectedRevision: revision }).strict(),
   temperature: z.object({ actor, value: z.number().finite().min(34.5).max(35.9), expectedRevision: revision }).strict(),
+  "scan-access": z.object({ actor }).strict(),
   scenario: z.object({ actor, stage: z.literal("worsening"), expectedRevision: revision }).strict(),
   evaluate: z.object({ actor, mode: z.enum(["gemini", "rehearsal"]), force: z.boolean().optional() }).strict(),
   "edit-plan": z.object({ actor, planId: z.string(), proposal: proposalSchema }).strict(),

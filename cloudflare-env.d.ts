@@ -7,5 +7,6 @@ declare namespace Cloudflare {
     GEMINI_MIN_INTERVAL_MS?: string;
     GEMINI_RPM_LIMIT?: string;
     GEMINI_RPD_LIMIT?: string;
+    ARDUINO_DEMO_KEY?: string;
   }
 }

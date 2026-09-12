@@ -4,6 +4,7 @@ import { createEncounter, TASKS } from "../lib/relay/catalog";
 import { addDraft, applyCommand, approvePlan, proposalOf } from "../lib/relay/workflow";
 import { validateProposal, frameSchema, commands } from "../lib/relay/validation";
 import { SerialFrameDecoder } from "../lib/relay/serial";
+import { requireDemoKey } from "../lib/relay/demo-access";
 import type { EncounterState, Proposal } from "../lib/relay/types";
 
 function proposal(state: EncounterState): Proposal {
@@ -14,6 +15,16 @@ function proposal(state: EncounterState): Proposal {
   };
 }
 function drafted() { const s = createEncounter(crypto.randomUUID()); addDraft(s, proposal(s), "rehearsal", "fixture"); return s; }
+
+test("private scan gate rejects missing, guessed and incorrect owner keys", async () => {
+  for (const key of ["", "123", "incorrect-key"]) {
+    await assert.rejects(() => requireDemoKey(key), { message: "Arduino not found 🙂", status: 403 });
+  }
+  const testKey = "private-test-fixture";
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(testKey))), b => b.toString(16).padStart(2, "0")).join("");
+  await assert.doesNotReject(() => requireDemoKey(testKey, digest));
+  await assert.rejects(() => requireDemoKey(testKey + "wrong", digest), /Arduino not found/);
+});
 
 test("intake fields may be empty and reported blood type remains unverified", () => {
   const s = createEncounter(crypto.randomUUID());

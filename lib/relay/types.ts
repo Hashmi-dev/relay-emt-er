@@ -23,6 +23,7 @@ export type Command =
   | { action: "notes"; actor: string; text: string; age: number | null; etaMinutes: number | null; bloodTypeReported?: BloodType | null; expectedRevision: number }
   | { action: "observations"; actor: string; values: Vitals; expectedRevision: number }
   | { action: "temperature"; actor: string; value: number; expectedRevision: number }
+  | { action: "scan-access"; actor: string }
   | { action: "scenario"; actor: string; stage: "worsening"; expectedRevision: number }
   | { action: "evaluate"; actor: string; mode: "gemini" | "rehearsal"; force?: boolean }
   | { action: "edit-plan"; actor: string; planId: string; proposal: Proposal }

@@ -42,6 +42,8 @@ Persona IDs: `maya`, `ben`, `sofia`, `lena`, `owen`, `sam`, `marcus`, `nina`, `e
 
 The current EMT interface replaces the USB motion panel with a **Simulated temperature scan**. It makes no hardware connection. The original motion sketch, serial parser and telemetry endpoint remain in the repository for later use.
 
+The scan is enabled only in the owner's configured demo deployment. Its private `ARDUINO_DEMO_KEY` lives in ignored `.env.local` for local development and a hosted server secret. The repository contains only its verification fingerprint. A fresh clone, a blank key, or an incorrect key such as `123` returns **Arduino not found 🙂** before cycling temperatures; the server also rejects direct scan saves. The example environment file deliberately leaves the key blank. This gates the demo installation, not a physical device or individual browser. Source-code changes can remove the gate. Manual observation entry and the rest of Relay still work without the private key.
+
 1. Install Arduino IDE and the **Arduino Mbed OS Nano Boards** board package.
 2. Install **Arduino_BMI270_BMM150** through Library Manager.
 3. Open [arduino/relay_motion/relay_motion.ino](arduino/relay_motion/relay_motion.ino), select **Arduino Nano 33 BLE** and its USB port, and upload.
@@ -76,6 +78,7 @@ All changes use JSON POST bodies; snapshots use GET. Typed commands are defined 
 | `POST /api/sessions/:id/notes` | Autosave optional note, age, ETA and reported blood type with expected revision |
 | `POST /api/sessions/:id/observations` | Add simulated observations; missing values may be null |
 | `POST /api/sessions/:id/temperature` | Save a settled demo temperature only; preserve other observations and reject stale revisions |
+| `POST /api/sessions/:id/scan-access` | Check private scan setup and EMT persona before starting the simulation; makes no encounter changes |
 | `POST /api/sessions/:id/evaluate` | Live Gemini evaluation or explicit rehearsal |
 | `POST /api/sessions/:id/edit-plan` | Lead-reviewed proposal creates a new draft ID |
 | `POST /api/sessions/:id/approve` | Lead approval, atomic reservation and dispatch |
@@ -95,6 +98,8 @@ npm run build
 ```
 
 Run the integration check against a running local server; it creates its own disposable session and uses the explicitly labeled rehearsal fixture. It verifies persistence, persona role checks, concurrent duplicate approval, staff readiness, telemetry/vital isolation, stale edits, and reset. Unit tests cover invalid evidence, incompatible specialties, occupied resources, plan edits, assignment replacement/history, blocked status and serial framing.
+
+For a clone without the private scan key, set `RELAY_SCAN_LOCKED=1` when running the integration check; it verifies both the scan-access and direct-temperature endpoints reject the attempt without changing observations. The default integration path verifies the owner's enabled scan.
 
 `node scripts/check-gemini.mjs` verifies model access without printing the key. `node scripts/smoke-gemini.mjs [model]` makes a small real function-call request and prints a sanitized result. These consume API requests. Live model quality and latency vary with provider capacity.
 

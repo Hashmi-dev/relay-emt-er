@@ -30,13 +30,25 @@ assert.equal(fresh.encounter.assignments.find(t=>t.id===assignment.id).status,'r
 assert.equal(fresh.encounter.etaMinutes,5);
 const intake=(await request(path+'/notes',{actor:'maya',text:'',age:null,etaMinutes:null,bloodTypeReported:'AB-',expectedRevision:fresh.encounter.clinicalRevision})).encounter;
 assert.equal(intake.age,null);assert.equal(intake.etaMinutes,null);assert.equal(intake.bloodTypeReported,'AB-');assert.equal(intake.notes.at(-1).text,'');
-const scanned=(await request(path+'/temperature',{actor:'maya',value:34.7,expectedRevision:intake.clinicalRevision})).encounter;
-assert.deepEqual(scanned.observations.at(-1).values,{...intake.observations.at(-1).values,temp:34.7});
-assert.equal(scanned.observations.length,intake.observations.length+1);
-await request(path+'/temperature',{actor:'maya',value:35.1,expectedRevision:intake.clinicalRevision},409);
-await request(path+'/temperature',{actor:'maya',value:37.1,expectedRevision:scanned.clinicalRevision},400);
-assert.equal((await request(path)).encounter.observations.at(-1).values.temp,34.7);
+let scanned=intake;
+if(process.env.RELAY_SCAN_LOCKED==='1') {
+  const denied=await request(path+'/scan-access',{actor:'maya'},403);
+  assert.equal(denied.error,'Arduino not found 🙂');
+  const direct=await request(path+'/temperature',{actor:'maya',value:34.7,expectedRevision:intake.clinicalRevision},403);
+  assert.equal(direct.error,'Arduino not found 🙂');
+  assert.deepEqual((await request(path)).encounter.observations,intake.observations);
+} else {
+  await request(path+'/scan-access',{actor:'lena'},403);
+  const access=await request(path+'/scan-access',{actor:'maya'});
+  assert.equal(access.encounter.clinicalRevision,intake.clinicalRevision);
+  scanned=(await request(path+'/temperature',{actor:'maya',value:34.7,expectedRevision:intake.clinicalRevision})).encounter;
+  assert.deepEqual(scanned.observations.at(-1).values,{...intake.observations.at(-1).values,temp:34.7});
+  assert.equal(scanned.observations.length,intake.observations.length+1);
+  await request(path+'/temperature',{actor:'maya',value:35.1,expectedRevision:intake.clinicalRevision},409);
+  await request(path+'/temperature',{actor:'maya',value:37.1,expectedRevision:scanned.clinicalRevision},400);
+  assert.equal((await request(path)).encounter.observations.at(-1).values.temp,34.7);
+}
 await request(path+'/reset',{actor:'maya',expectedRevision:scanned.clinicalRevision});
 const reset=await request(path);assert.equal(reset.encounter.assignments.length,0);assert.equal(reset.telemetry,null);
-console.log('PASS: D1 persistence, approval role checks, concurrent idempotent dispatch, staff readiness, telemetry isolation, nullable intake fields, targeted temperature scan, stale edits and reset.');
+console.log('PASS: D1 persistence, approval role checks, concurrent idempotent dispatch, staff readiness, telemetry isolation, nullable intake fields, private scan gate ('+(process.env.RELAY_SCAN_LOCKED==='1'?'locked':'enabled')+'), stale edits and reset.');
 console.log('Test session: '+id);
