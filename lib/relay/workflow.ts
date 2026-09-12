@@ -74,8 +74,9 @@ export function applyCommand(state: EncounterState, command: Exclude<Command, { 
   switch (command.action) {
     case "notes": {
       requireActor(state, actor, ["emt"]); requireRevision(state, command.expectedRevision);
-      if (state.notes.at(-1)?.text === command.text && state.age === command.age && state.etaMinutes === command.etaMinutes) return;
-      invalidateAgent(state); state.age = command.age; state.etaMinutes = command.etaMinutes;
+      const bloodType = command.bloodTypeReported === undefined ? state.bloodTypeReported : command.bloodTypeReported;
+      if (state.notes.at(-1)?.text === command.text && state.age === command.age && state.etaMinutes === command.etaMinutes && state.bloodTypeReported === bloodType) return;
+      invalidateAgent(state); state.age = command.age; state.etaMinutes = command.etaMinutes; state.bloodTypeReported = bloodType;
       state.notes.push({ id: "note-" + state.clinicalRevision, text: command.text, at: new Date().toISOString(), author: actor });
       if (state.notes.length > 150) throw new RelayError("This rehearsal has reached its note limit. Start a fresh session.", 409);
       event(state, actor, "note", "Updated field notes / ETA. Clinical revision " + state.clinicalRevision + "."); break;
@@ -85,6 +86,15 @@ export function applyCommand(state: EncounterState, command: Exclude<Command, { 
       state.observations.push({ id: "obs-" + state.clinicalRevision, values: command.values, at: new Date().toISOString(), source: "simulated", author: actor });
       if (state.observations.length > 150) throw new RelayError("This rehearsal has reached its observation limit. Start a fresh session.", 409);
       event(state, actor, "observation", "Recorded a new set of simulated patient observations."); break;
+    }
+    case "temperature": {
+      requireActor(state, actor, ["emt"]); requireRevision(state, command.expectedRevision);
+      const previous = state.observations.at(-1);
+      if (!previous) throw new RelayError("Patient observations are unavailable.", 409);
+      invalidateAgent(state);
+      state.observations.push({ id: "obs-" + state.clinicalRevision, values: { ...previous.values, temp: command.value }, at: new Date().toISOString(), source: "simulated", author: actor });
+      if (state.observations.length > 150) throw new RelayError("This demo has reached its observation limit. Start a fresh session.", 409);
+      event(state, actor, "observation", "Demo temperature scan recorded " + command.value.toFixed(1) + "°C (simulated)."); break;
     }
     case "scenario": {
       requireActor(state, actor, ["emt"]);

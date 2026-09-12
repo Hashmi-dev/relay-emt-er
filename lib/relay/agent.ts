@@ -47,7 +47,7 @@ export function rehearsalProposal(state: EncounterState): Proposal {
 
 export async function evaluate(id: string, actor: string, mode: "gemini" | "rehearsal", force = false) {
   const config = configuration();
-  if (mode === "gemini" && !config.liveAvailable) throw new RelayError("Gemini is not connected yet. Add your API key, or explicitly choose the scripted rehearsal.", 503);
+  if (mode === "gemini" && !config.liveAvailable) throw new RelayError("Gemini is not connected yet. Add your API key to enable live coordination.", 503);
   const runId = crypto.randomUUID(); const start = Date.now();
   const initial = await mutateSession(id, state => {
     requireActor(state, actor, ["emt", "lead"]);
@@ -66,7 +66,7 @@ export async function evaluate(id: string, actor: string, mode: "gemini" | "rehe
     else {
       const client = new GoogleGenAI({ apiKey: setting("GEMINI_API_KEY"), httpOptions: { timeout: 30000 } });
       const contents: Content[] = [{ role: "user", parts: [{ text: JSON.stringify({
-        patient: { id: initial.patientId, age: initial.age, incidentAt: initial.incidentAt, etaMinutes: initial.etaMinutes, bloodType: "unverified" },
+        patient: { id: initial.patientId, age: initial.age, incidentAt: initial.incidentAt, etaMinutes: initial.etaMinutes, bloodTypeReported: initial.bloodTypeReported, bloodType: "unverified" },
         latestNote: initial.notes.at(-1), previousNote: initial.notes.at(-2), observations: initial.observations.slice(-6),
         resources: { people: initial.people, rooms: initial.rooms }, preparationCatalog: TASKS,
         existingAssignments: initial.assignments.filter(t => t.status !== "superseded").map(t => ({ category: t.category, personId: t.personId, roomId: t.roomId, status: t.status })),

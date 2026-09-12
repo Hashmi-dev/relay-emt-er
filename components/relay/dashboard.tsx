@@ -14,14 +14,14 @@ import { Observations, Glossary } from "./observations";
 import { NotesEditor } from "./notes-editor";
 import { HandoffPanel } from "./handoff-panel";
 import { CoordinationPanel, Resources, StaffAssignments } from "./team-panels";
-import { TelemetryPanel } from "./telemetry-panel";
+import { TemperaturePanel } from "./temperature-panel";
 
 export default function RelayDashboard() {
   const { sessionId, persona, snapshot, syncError, act, switchPersona } = useRelay();
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [mode, setMode] = useState<"gemini" | "rehearsal" | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [pauseUntil, setPauseUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -40,18 +40,17 @@ export default function RelayDashboard() {
   useEffect(() => { if (plan && agentStatus === "idle") setActionError(""); }, [plan?.id, agentStatus]);
   const liveAvailable = !!snapshot?.config.liveAvailable;
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  useEffect(() => { if (liveAvailable && mode === null) setMode("gemini"); }, [liveAvailable, mode]);
   const run = useCallback(async (command: Command, message?: string) => {
     setBusy(command.action); setActionError("");
     try { await act(command); if (message) toast.success(message); return true; }
     catch (e) { const text = e instanceof Error ? e.message : "Could not save the update."; setActionError(text); toast.error(text); return false; }
     finally { setBusy(""); }
   }, [act]);
-  const runAgent = useCallback(async (selected: "gemini" | "rehearsal", force = false) => {
+  const runAgent = useCallback(async (force = false) => {
     const current = latest.current; if (!current) return;
-    setMode(selected); setBusy("evaluate"); setActionError("");
-    attempted.current = [current.encounter.clinicalRevision, current.encounter.resourceRevision, selected].join(":");
-    try { await act({ action: "evaluate", actor: latestPersona.current, mode: selected, force }); }
+    setBusy("evaluate"); setActionError("");
+    attempted.current = [current.encounter.clinicalRevision, current.encounter.resourceRevision].join(":");
+    try { await act({ action: "evaluate", actor: latestPersona.current, mode: "gemini", force }); }
     catch (e) {
       if (e instanceof ApiError && e.retryAfterMs && (e.status === 429 || e.status === 409)) {
         attempted.current = ""; setPauseUntil(Date.now() + e.retryAfterMs);
@@ -59,15 +58,15 @@ export default function RelayDashboard() {
     } finally { setBusy(""); }
   }, [act]);
   useEffect(() => {
-    if (!clinical || !mode || role === "staff" || dirty || busy || syncError || agentRunning || (mode === "gemini" && !liveAvailable)) return;
-    if (plan && plan.source === mode && plan.clinicalRevision === clinical && plan.resourceRevision === resources) return;
-    const key = [clinical, resources, mode].join(":"); if (attempted.current === key) return;
+    if (!clinical || role === "staff" || dirty || scanning || busy || syncError || agentRunning || !liveAvailable) return;
+    if (plan && plan.source === "gemini" && plan.clinicalRevision === clinical && plan.resourceRevision === resources) return;
+    const key = [clinical, resources].join(":"); if (attempted.current === key) return;
     const delay = Math.max(3000, nextAllowed - Date.now(), pauseUntil - Date.now());
-    const timer = setTimeout(() => void runAgent(mode), delay);
+    const timer = setTimeout(() => void runAgent(), delay);
     return () => clearTimeout(timer);
     // Dependencies are revisions/primitives so the two-second poll cannot keep
     // restarting the three-second debounce. runAgent reads the latest snapshot.
-  }, [clinical, resources, mode, role, dirty, busy, syncError, agentRunning, liveAvailable, plan?.id, plan?.resourceRevision, nextAllowed, pauseUntil, runAgent]);
+  }, [clinical, resources, role, dirty, scanning, busy, syncError, agentRunning, liveAvailable, plan?.id, plan?.resourceRevision, nextAllowed, pauseUntil, runAgent]);
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: unknown, options: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
     if (!context?.registerTool || !sessionId) return;
@@ -82,7 +81,7 @@ export default function RelayDashboard() {
   const share = async () => { try { await navigator.clipboard.writeText(window.location.href); toast.success("Persona session link copied."); } catch { toast.error("Copy the current browser address to share this view."); } };
   const pendingSeconds = Math.max(0, Math.ceil((Math.max(nextAllowed, pauseUntil) - now) / 1000));
   const stale = !!plan && (plan.clinicalRevision !== clinical || plan.resourceRevision !== resources || agentStatus === "error");
-  const disabled = !!busy || dirty;
+  const disabled = !!busy || dirty || scanning;
   const ready = state?.assignments.filter(t => t.status === "ready").length || 0;
   const active = state?.assignments.filter(t => t.status !== "superseded").length || 0;
   const citedEvidence = new Set(plan?.tasks.flatMap(t => t.evidenceIds) || []);
@@ -93,14 +92,14 @@ export default function RelayDashboard() {
       {!state ? <section className="panel loading-panel"><Activity size={32} /><h1>{syncError ? "Unable to load this encounter" : "Opening your demo encounter"}</h1><p>{syncError || "Connecting the ambulance and receiving team…"}</p>{syncError ? <Button onClick={() => window.location.reload()}>Retry connection</Button> : <LoaderCircle className="spin" />}</section> : <>
         <div className="page-heading"><div><p className="eyebrow">{role === "emt" ? "AMBULANCE WORKSPACE / MEDIC 12" : role === "lead" ? "RECEIVING TEAM / NORTHLINE MEDICAL" : "STAFF WORKSPACE / NORTHLINE MEDICAL"}</p><h1>{role === "emt" ? "Incoming trauma" : role === "lead" ? "Coordinate the receiving team" : "Your preparation assignments"}</h1><p className="muted">{role === "emt" ? "Update the field report as the patient's condition changes." : role === "lead" ? "Review the handoff. Prepare the team before arrival." : person.name + " · " + person.label}</p></div><div className={"connection " + (syncError ? "text-error" : "")}><Radio size={16} />{syncError ? "Connection interrupted" : "Shared encounter"}<span className="rev-label">REV {state.clinicalRevision}</span></div></div>
         {syncError ? <div className="inline-error" role="alert">{syncError} Showing the last received encounter. Unsaved notes remain in this browser.</div> : null}
-        <section className="patient-banner"><div><span className="pill danger">Priority · Urgent clinician review</span><h2>{state.patientId}<span>{state.age === null ? "Age unknown" : state.age + " years (reported)"}</span></h2><p>Medic 12 <ArrowUpRight size={13} /> Northline Medical · ED</p><div className="patient-metadata"><span>Blood type <strong>Unverified</strong></span><span>{plan?.approvedAt ? "Team dispatched" : active ? "Updated plan awaiting review" : "Team on standby"}</span></div></div><div className="eta"><small>ESTIMATED ARRIVAL · EMT REPORTED</small><strong>{String(state.etaMinutes).padStart(2, "0")}<span> min</span></strong><span>{active ? ready + " of " + active + " assignments ready" : "Receiving team awaiting dispatch"}</span></div></section>
-        <Observations state={state} persona={person.id} canEdit={role === "emt" && !dirty && !busy} act={act} />
-        {role !== "staff" ? <section className={"agent-strip " + (agentStatus === "error" ? "agent-error" : "")}><div className="agent-icon">{agentRunning || busy === "evaluate" ? <LoaderCircle className="spin" size={21} /> : <Sparkles size={21} />}</div><div className="agent-description"><strong>{agentRunning || busy === "evaluate" ? "Preparing the handoff…" : agentStatus === "error" ? "Report needs attention" : !liveAvailable && mode !== "rehearsal" ? "Connect Gemini for live coordination" : stale ? "New information is ready for review" : plan ? "Latest handoff prepared" : "Ready to build the first handoff"}</strong><span>{mode === "rehearsal" ? "Scripted rehearsal is selected. This is a fixed scenario, not live AI." : !liveAvailable ? "The clinical workflow is ready. Use a Gemini key or choose a labeled rehearsal." : dirty ? "The agent will evaluate after your notes are saved." : "Gemini reviews notes after a pause. Preparation tasks require ER lead approval."}</span></div><div className="agent-actions"><Button disabled={disabled || !liveAvailable || agentRunning || pendingSeconds > 0} onClick={() => void runAgent("gemini", true)}><Sparkles />{pendingSeconds > 0 ? "Retry in " + pendingSeconds + "s" : plan ? "Refresh with Gemini" : "Run Gemini"}</Button><Button variant="outline" disabled={disabled || agentRunning || pendingSeconds > 0} onClick={() => void runAgent("rehearsal", true)}><Play /> Scripted rehearsal</Button></div></section> : null}
+        <section className="patient-banner"><div><span className="pill danger">Priority · Urgent clinician review</span><h2>{state.patientId}<span>{state.age === null ? "Age unknown" : state.age + " years (reported)"}</span></h2><p>Medic 12 <ArrowUpRight size={13} /> Northline Medical · ED</p><div className="patient-metadata"><span>Blood type <strong>{state.bloodTypeReported ? state.bloodTypeReported + " · Reported, unverified" : "Unknown · Unverified"}</strong></span><span>{plan?.approvedAt ? "Team dispatched" : active ? "Updated plan awaiting review" : "Team on standby"}</span></div></div><div className="eta"><small>ESTIMATED ARRIVAL · EMT REPORTED</small><strong>{state.etaMinutes === null ? "—" : String(state.etaMinutes).padStart(2, "0")}<span>{state.etaMinutes === null ? " Unknown" : " min"}</span></strong><span>{active ? ready + " of " + active + " assignments ready" : "Receiving team awaiting dispatch"}</span></div></section>
+        <Observations state={state} persona={person.id} canEdit={role === "emt" && !disabled} act={act} />
+        {role !== "staff" ? <section className={"agent-strip " + (agentStatus === "error" ? "agent-error" : "")}><div className="agent-icon">{agentRunning || busy === "evaluate" ? <LoaderCircle className="spin" size={21} /> : <Sparkles size={21} />}</div><div className="agent-description"><strong>{agentRunning || busy === "evaluate" ? "Preparing the handoff…" : agentStatus === "error" ? "Report needs attention" : !liveAvailable ? "Connect Gemini for live coordination" : stale ? "New information is ready for review" : plan ? "Latest handoff prepared" : "Ready to build the first handoff"}</strong><span>{!liveAvailable ? "Add a Gemini API key to enable the live coordination agent." : dirty ? "The agent will evaluate after your notes are saved." : scanning ? "The agent will review the completed temperature reading." : "Gemini reviews notes after a pause. Preparation tasks require ER lead approval."}</span></div><div className="agent-actions"><Button disabled={disabled || !liveAvailable || agentRunning || pendingSeconds > 0} onClick={() => void runAgent(true)}><Sparkles />{pendingSeconds > 0 ? "Retry in " + pendingSeconds + "s" : plan ? "Refresh with Gemini" : "Run Gemini"}</Button></div></section> : null}
         {actionError ? <p className="inline-error" role="alert">{actionError}</p> : null}
         {state.agent.error ? <p className="inline-error" role="status">{state.agent.error}</p> : null}
         <div className={"main-grid " + (role === "lead" ? "lead-grid" : "")}>
           <div className="panel-stack">
-            {role === "emt" ? <><NotesEditor key={"notes-" + sessionId + person.id} state={state} persona={person.id} act={act} onDirty={setDirty} /><section className="panel scenario-panel"><div className="panel-heading"><h2><Play size={18} /> Scenario controls</h2><span className="pill neutral">Simulation only</span></div><p className="muted">Advance the crash scenario to add worsening observations and a five-minute ETA.</p><Button variant="outline" disabled={disabled || state.scenario === "worsening"} onClick={() => void run({ action: "scenario", actor: person.id, stage: "worsening", expectedRevision: state.clinicalRevision }, "Scenario advanced. The receiving team can see the update.")}>{state.scenario === "worsening" ? <ShieldCheck /> : <ArrowUpRight />}{state.scenario === "worsening" ? "Worsening scenario applied" : "Add worsening update"}</Button></section><TelemetryPanel key={"telemetry-" + sessionId + person.id} sessionId={sessionId} persona={person.id} telemetry={snapshot?.telemetry || null} canConnect /></> : role === "lead" ? <><CoordinationPanel state={state} persona={person.id} isLead act={act} run={run} busy={!!busy} sessionId={sessionId} /><Resources state={state} persona={person.id} run={run} busy={!!busy} /></> : <StaffAssignments state={state} persona={person.id} run={run} busy={!!busy} />}
+            {role === "emt" ? <><NotesEditor key={"notes-" + sessionId + person.id} state={state} persona={person.id} act={act} onDirty={setDirty} /><TemperaturePanel key={"temperature-" + sessionId + person.id} state={state} persona={person.id} act={act} disabled={disabled || !!syncError} onScanning={setScanning}/><section className="panel scenario-panel"><div className="panel-heading"><h2><Play size={18} /> Scenario controls</h2><span className="pill neutral">Simulation only</span></div><p className="muted">Advance the crash scenario to add worsening observations and a five-minute ETA.</p><Button variant="outline" disabled={disabled || state.scenario === "worsening"} onClick={() => void run({ action: "scenario", actor: person.id, stage: "worsening", expectedRevision: state.clinicalRevision }, "Scenario advanced. The receiving team can see the update.")}>{state.scenario === "worsening" ? <ShieldCheck /> : <ArrowUpRight />}{state.scenario === "worsening" ? "Worsening scenario applied" : "Add worsening update"}</Button></section></> : role === "lead" ? <><CoordinationPanel state={state} persona={person.id} isLead act={act} run={run} busy={!!busy} sessionId={sessionId} /><Resources state={state} persona={person.id} run={run} busy={!!busy} /></> : <StaffAssignments state={state} persona={person.id} run={run} busy={!!busy} />}
             {role !== "emt" ? <section className="panel incoming-note"><div className="panel-heading"><h2><ClipboardList size={18} /> Live EMT update</h2><span className="pill neutral">Reported</span></div><p>{state.notes.at(-1)?.text || "No field notes documented."}</p><small>{state.people.find(p => p.id === state.notes.at(-1)?.author)?.name} · {new Date(state.notes.at(-1)!.at).toLocaleTimeString()}</small></section> : null}
           </div>
           <div className="panel-stack"><HandoffPanel state={state} />{role === "emt" ? <CoordinationPanel state={state} persona={person.id} isLead={false} act={act} run={run} busy={!!busy} sessionId={sessionId} /> : null}

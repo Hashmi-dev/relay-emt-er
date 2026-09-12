@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createEncounter, TASKS } from "../lib/relay/catalog";
 import { addDraft, applyCommand, approvePlan, proposalOf } from "../lib/relay/workflow";
-import { validateProposal, frameSchema } from "../lib/relay/validation";
+import { validateProposal, frameSchema, commands } from "../lib/relay/validation";
 import { SerialFrameDecoder } from "../lib/relay/serial";
 import type { EncounterState, Proposal } from "../lib/relay/types";
 
@@ -14,6 +14,32 @@ function proposal(state: EncounterState): Proposal {
   };
 }
 function drafted() { const s = createEncounter(crypto.randomUUID()); addDraft(s, proposal(s), "rehearsal", "fixture"); return s; }
+
+test("intake fields may be empty and reported blood type remains unverified", () => {
+  const s = createEncounter(crypto.randomUUID());
+  const blank = commands.notes.parse({ actor: "maya", text: "", age: null, etaMinutes: null, bloodTypeReported: null, expectedRevision: 1 });
+  applyCommand(s, { action: "notes", ...blank });
+  assert.equal(s.age, null); assert.equal(s.etaMinutes, null); assert.equal(s.bloodTypeReported, null); assert.equal(s.notes.at(-1)!.text, "");
+  applyCommand(s, { action: "notes", ...blank, bloodTypeReported: "O+", expectedRevision: s.clinicalRevision });
+  assert.equal(s.bloodTypeReported, "O+");
+  const plan = proposal(s);
+  plan.tasks.push({ category: "blood_bank", personId: "sam", roomId: null, rationale: "Reported bleeding requires blood-bank preparation.", evidenceIds: [s.notes.at(-1)!.id] });
+  addDraft(s, plan, "rehearsal", "fixture"); approvePlan(s, s.plans.at(-1)!.id, "sofia");
+  assert.match(s.assignments.find(a => a.category === "blood_bank")!.instruction, /Blood type is unverified/);
+  assert.equal(commands.notes.safeParse({ ...blank, bloodTypeReported: "Z+" }).success, false);
+});
+
+test("demo temperature changes only temperature and rejects stale or unauthorized scans", () => {
+  const s = drafted(); const before = structuredClone(s.observations.at(-1)!.values);
+  const reading = commands.temperature.parse({ actor: "maya", value: 34.8, expectedRevision: s.clinicalRevision });
+  applyCommand(s, { action: "temperature", ...reading });
+  assert.deepEqual(s.observations.at(-1)!.values, { ...before, temp: 34.8 });
+  assert.equal(s.observations.at(-1)!.source, "simulated"); assert.equal(s.observations.length, 2);
+  assert.equal(s.assignments.length, 0); assert.throws(() => approvePlan(s, s.plans[0].id, "sofia"), /outdated/);
+  assert.throws(() => applyCommand(s, { action: "temperature", ...reading }), /New EMT information/);
+  assert.throws(() => applyCommand(s, { action: "temperature", ...reading, actor: "lena", expectedRevision: s.clinicalRevision }), /different demo persona/);
+  for (const value of [34.4, 36, NaN]) assert.equal(commands.temperature.safeParse({ ...reading, value }).success, false);
+});
 
 test("drafts cannot dispatch; only the lead may approve", () => {
   const s = drafted(); assert.equal(s.assignments.length, 0); assert.equal(s.rooms.find(r=>r.id==="T2")!.status,"available");

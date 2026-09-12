@@ -21,7 +21,10 @@ export async function createSession(): Promise<EncounterState> {
 export async function readSession(id: string): Promise<{ state: EncounterState; version: number }> {
   const row = await db().prepare("SELECT body,version FROM relay_sessions WHERE id = ?").bind(id).first<{ body: string; version: number }>();
   if (!row) throw new RelayError("This demo session was not found. Start a new session from Relay’s home page.", 404);
-  return { state: JSON.parse(row.body), version: row.version };
+  const state = JSON.parse(row.body) as EncounterState;
+  // Older sessions predate the optional reported blood-type field.
+  state.bloodTypeReported ??= null;
+  return { state, version: row.version };
 }
 export async function mutateSession(id: string, change: (state: EncounterState) => void): Promise<EncounterState> {
   for (let attempt = 0; attempt < 6; attempt++) {
