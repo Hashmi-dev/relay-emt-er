@@ -1,0 +1,21 @@
+import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {spawn} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+import {parseEnv} from 'node:util';
+const root=resolve(import.meta.dirname,'..');
+const runtime=resolve(root,'.sites-runtime/built-preview');
+mkdirSync(runtime,{recursive:true});
+const config=JSON.parse(readFileSync(resolve(root,'dist/server/wrangler.json'),'utf8'));
+config.main=resolve(root,'dist/server/index.js');
+config.assets.directory=resolve(root,'dist/client');
+writeFileSync(resolve(runtime,'wrangler.json'),JSON.stringify(config));
+const file=resolve(root,'.env.local');
+const values=existsSync(file)?parseEnv(readFileSync(file,'utf8')):{};
+const keys=['GEMINI_API_KEY','GEMINI_MODEL','GEMINI_MIN_INTERVAL_MS','GEMINI_RPM_LIMIT','GEMINI_RPD_LIMIT'];
+writeFileSync(resolve(runtime,'.dev.vars'),keys.filter(k=>values[k]).map(k=>k+'='+JSON.stringify(values[k])).join('\n')+'\n',{mode:0o600});
+// Secrets stay in ignored runtime state, never in the packaged dist directory.
+const child=spawn(process.execPath,['--import',pathToFileURL(resolve(root,'scripts/sites-env.mjs')).href,resolve(root,'node_modules/wrangler/bin/wrangler.js'),'dev','--config',resolve(runtime,'wrangler.json'),'--local','--persist-to',resolve(root,'.wrangler/state'),'--ip','127.0.0.1','--inspector-port','0',...process.argv.slice(2)],{cwd:root,stdio:'inherit'});
+child.on('exit',code=>process.exit(code??1));
+process.on('SIGINT',()=>child.kill('SIGINT'));
+process.on('SIGTERM',()=>child.kill('SIGTERM'));
