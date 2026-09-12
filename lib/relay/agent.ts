@@ -1,4 +1,4 @@
-import { GoogleGenAI, FunctionCallingConfigMode, type Content, type FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, FunctionCallingConfigMode, ThinkingLevel, type Content, type FunctionDeclaration } from "@google/genai";
 import { TASKS } from "./catalog";
 import { configuration, mutateSession, readSession, setting, takeModelQuota } from "./store";
 import { addDraft, event, requireActor } from "./workflow";
@@ -51,7 +51,7 @@ export async function evaluate(id: string, actor: string, mode: "gemini" | "rehe
   const runId = crypto.randomUUID(); const start = Date.now();
   const initial = await mutateSession(id, state => {
     requireActor(state, actor, ["emt", "lead"]);
-    if (state.agent.status === "running" && start - Date.parse(state.agent.startedAt || "") < 75000) throw new RelayError("The agent is already preparing a report. New input will be evaluated next.", 409, 3000);
+    if (state.agent.status === "running" && start - Date.parse(state.agent.startedAt || "") < 105000) throw new RelayError("The agent is already preparing a report. New input will be evaluated next.", 409, 3000);
     if (start < state.agent.nextAllowedAt) throw new RelayError("Waiting briefly before the next model request.", 429, state.agent.nextAllowedAt - start);
     const latest = state.plans.at(-1);
     if (!force && latest && latest.source === mode && latest.clinicalRevision === state.clinicalRevision && latest.resourceRevision === state.resourceRevision)
@@ -64,7 +64,7 @@ export async function evaluate(id: string, actor: string, mode: "gemini" | "rehe
     let proposal: Proposal | undefined;
     if (mode === "rehearsal") proposal = rehearsalProposal(initial);
     else {
-      const client = new GoogleGenAI({ apiKey: setting("GEMINI_API_KEY"), httpOptions: { timeout: 18000 } });
+      const client = new GoogleGenAI({ apiKey: setting("GEMINI_API_KEY"), httpOptions: { timeout: 30000 } });
       const contents: Content[] = [{ role: "user", parts: [{ text: JSON.stringify({
         patient: { id: initial.patientId, age: initial.age, incidentAt: initial.incidentAt, etaMinutes: initial.etaMinutes, bloodType: "unverified" },
         latestNote: initial.notes.at(-1), previousNote: initial.notes.at(-2), observations: initial.observations.slice(-6),
@@ -74,7 +74,7 @@ export async function evaluate(id: string, actor: string, mode: "gemini" | "rehe
       for (let round = 0; round < 3 && !proposal; round++) {
         await takeModelQuota(); requests++;
         const response = await client.models.generateContent({ model: config.model, contents,
-          config: { systemInstruction: SYSTEM, maxOutputTokens: 6000, tools: [{ functionDeclarations: [SAVE_PLAN, READ_RESOURCES] }], toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY } } },
+          config: { systemInstruction: SYSTEM, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }, maxOutputTokens: 6000, tools: [{ functionDeclarations: [SAVE_PLAN, READ_RESOURCES] }], toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY } } },
         });
         const content = response.candidates?.[0]?.content;
         const calls = response.functionCalls || [];
@@ -111,7 +111,7 @@ export async function evaluate(id: string, actor: string, mode: "gemini" | "rehe
         .replace(/AIza[\w-]+/g, "[redacted]").slice(0, 600);
       console.error("Relay provider diagnostic", { status, name: error instanceof Error ? error.name : "Unknown", message: diagnostic });
     }
-    const providerMessage = status === 503 ? "Gemini is temporarily at capacity. Retry shortly; the last report and approved tasks are preserved."
+    const providerMessage = status === 504 ? "Gemini took too long to return a report. Retry shortly; the previous report and approved tasks are preserved." : status === 503 ? "Gemini is temporarily at capacity. Retry shortly; the last report and approved tasks are preserved."
       : status === 429 ? "Your Gemini project quota has been reached. Check AI Studio rate limits; manual updates and approved tasks remain available."
       : status === 400 ? "Gemini rejected the request format. Check the configured model and server integration. Your encounter is preserved."
       : status === 401 || status === 403 ? "Gemini denied access. Check the server API key and project permissions. Your encounter is preserved."

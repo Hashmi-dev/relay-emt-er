@@ -35,7 +35,7 @@ export default function RelayDashboard() {
   const clinical = state?.clinicalRevision;
   const resources = state?.resourceRevision;
   const agentStatus = state?.agent.status;
-  const agentRunning = agentStatus === "running" && now - Date.parse(state?.agent.startedAt || "") < 75000;
+  const agentRunning = agentStatus === "running" && now - Date.parse(state?.agent.startedAt || "") < 105000;
   const nextAllowed = state?.agent.nextAllowedAt || 0;
   useEffect(() => { if (plan && agentStatus === "idle") setActionError(""); }, [plan?.id, agentStatus]);
   const liveAvailable = !!snapshot?.config.liveAvailable;
