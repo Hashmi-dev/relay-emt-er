@@ -36,8 +36,9 @@ export function validateProposal(input: unknown, state: EncounterState): Proposa
 const actor = z.string().min(1).max(40);
 const revision = z.number().int().positive();
 export const commands = {
-  notes: z.object({ actor, text: z.string().max(12000), age: z.number().int().min(0).max(120).nullable(), etaMinutes: z.number().int().min(0).max(240), expectedRevision: revision }).strict(),
+  notes: z.object({ actor, text: z.string().max(12000), age: z.number().int().min(0).max(120).nullable(), etaMinutes: z.number().int().min(0).max(240).nullable(), bloodTypeReported: z.enum(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]).nullable().optional(), expectedRevision: revision }).strict(),
   observations: z.object({ actor, values: vitalsSchema, expectedRevision: revision }).strict(),
+  temperature: z.object({ actor, value: z.number().finite().min(34.5).max(35.9), expectedRevision: revision }).strict(),
   scenario: z.object({ actor, stage: z.literal("worsening"), expectedRevision: revision }).strict(),
   evaluate: z.object({ actor, mode: z.enum(["gemini", "rehearsal"]), force: z.boolean().optional() }).strict(),
   "edit-plan": z.object({ actor, planId: z.string(), proposal: proposalSchema }).strict(),

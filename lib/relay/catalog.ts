@@ -34,7 +34,7 @@ export const WORSENING_VITALS: Vitals = { hr: 144, sbp: 78, dbp: 46, rr: 32, spo
 export const DEFINITIONS: Record<string, string> = { HR: "Heart rate · beats per minute", BP: "Blood pressure · systolic / diastolic, mmHg", RR: "Respiratory rate · breaths per minute", "SpO₂": "Peripheral oxygen saturation · percent", Temp: "Patient temperature · degrees Celsius", GCS: "Glasgow Coma Scale · reported total out of 15", ETA: "Estimated time of arrival", ED: "Emergency department", OR: "Operating room", CT: "Computed tomography" };
 
 export function createEncounter(id: string, now = new Date().toISOString()): EncounterState {
-  return { id, createdAt: now, clinicalRevision: 1, resourceRevision: 1, patientId: "TRAUMA-001", age: 34, etaMinutes: 8, incidentAt: new Date(Date.parse(now) - 18 * 60_000).toISOString(),
+  return { id, createdAt: now, clinicalRevision: 1, resourceRevision: 1, patientId: "TRAUMA-001", age: 34, etaMinutes: 8, bloodTypeReported: null, incidentAt: new Date(Date.parse(now) - 18 * 60_000).toISOString(),
     notes: [{ id: "note-1", text: INITIAL_NOTES, at: now, author: "maya" }], observations: [{ id: "obs-1", at: now, source: "simulated", values: { ...INITIAL_VITALS }, author: "maya" }],
     people: structuredClone(PEOPLE), rooms: structuredClone(ROOMS), plans: [], assignments: [], scenario: "initial",
     events: [{ id: crypto.randomUUID(), at: now, actor: "maya", kind: "intake", text: "Medic 12 opened the fictional crash encounter." }],

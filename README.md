@@ -2,11 +2,11 @@
 
 An EMT-to-ER preparation and handoff prototype. One field update becomes an evidence-linked ATMIST report and proposed receiving-team preparations. **The ER lead approves dispatch.** Each fictional staff member acknowledges readiness in their own linked view.
 
-Built from a fresh Sites React/TypeScript + shadcn starter, with a Cloudflare Worker, D1 persistence, the official Google GenAI SDK, and Arduino USB telemetry.
+Built from a fresh Sites React/TypeScript + shadcn starter, with a Cloudflare Worker, D1 persistence, the official Google GenAI SDK, and simulated patient-monitor visuals.
 
 ## Run locally
 
-Requirements: Node.js 22.13 or newer (Node 24 recommended), npm, and desktop Chrome or Edge for USB serial.
+Requirements: Node.js 22.13 or newer (Node 24 recommended), npm, and a modern browser. The current demo requires no Arduino hardware.
 
 ```sh
 npm run install:ci
@@ -28,22 +28,24 @@ Apply that migration only once to a fresh local database. Development opens at `
 ## Demo flow
 
 1. Open Relay to create a session. Keep its `session` query parameter when sharing persona links.
-2. In EMT, edit the report and ETA. Notes save after an 800 ms pause. Simulated observations can be edited or advanced with **Add worsening update**.
-3. With a key configured, Gemini runs after a three-second pause, at most once every fifteen seconds per encounter. Motion samples never trigger evaluation.
+2. In EMT, edit the optional age, ETA, reported blood type and assessment. Any field can remain blank; blank measurements are unknown. Notes save after an 800 ms pause. Click **Take temperature** to cycle demo readings for about 2.6 seconds, then save one simulated value in the fictional 34.5–35.9°C range. This is a chosen demo range, not a clinical blood-loss rule.
+3. HR, BP and SpO₂ have continuously animated illustrative waveforms with Pause/Resume and reduced-motion support. Numeric cards show the latest simulated observations, rounded to whole numbers except temperature (one decimal). Animations never create observations or call the agent. With a key configured, Gemini reviews saved changes after a three-second pause, at most once every fifteen seconds per encounter.
 4. Open **ER lead**. Review the ATMIST report, concerns, unknowns, contradictions, and source evidence. Edit the proposal if needed, then **Approve and dispatch**.
 5. Open a team member's link in another tab or browser. Select **Acknowledge**, **Ready**, or **Blocked** with an explanation. The lead receives updates through two-second polling.
 6. Advance the scenario. The new report needs approval; existing assignments retain their status history. Only approved personnel/location/category changes replace assignments.
 
-**Scripted rehearsal** is an explicitly selected fixed crash fixture for testing without a model. It does not interpret arbitrary notes. Use the live Gemini agent for the submitted recording. A 2:45 recording outline is in [docs/demo-script.md](docs/demo-script.md).
+The workspace uses the live Gemini agent; the scripted rehearsal control has been removed. A fixed fixture remains accessible to the integration test through the API, with explicit provenance, and never acts as an automatic fallback. A 2:45 recording outline is in [docs/demo-script.md](docs/demo-script.md).
 
 Persona IDs: `maya`, `ben`, `sofia`, `lena`, `owen`, `sam`, `marcus`, `nina`, `ethan`, `priya`. Example: `/?session=<existing-session-id>&persona=lena`. The role switcher is a simulation convenience, not production authentication. Anyone with access to a session may select any persona.
 
-## Arduino Nano 33 BLE Rev2
+## Arduino Nano 33 BLE Rev2 (retained for future hardware integration)
+
+The current EMT interface replaces the USB motion panel with a **Simulated temperature scan**. It makes no hardware connection. The original motion sketch, serial parser and telemetry endpoint remain in the repository for later use.
 
 1. Install Arduino IDE and the **Arduino Mbed OS Nano Boards** board package.
 2. Install **Arduino_BMI270_BMM150** through Library Manager.
 3. Open [arduino/relay_motion/relay_motion.ino](arduino/relay_motion/relay_motion.ino), select **Arduino Nano 33 BLE** and its USB port, and upload.
-4. Close Serial Monitor so it releases the port. Open the EMT view in desktop Chrome/Edge on localhost or HTTPS. Click **Connect Arduino**, select the board, and move it.
+4. Use Arduino Serial Monitor at 115200 baud to inspect motion frames. The current website does not expose a Connect Arduino control.
 
 The sketch emits newline-delimited JSON at 115200 baud, five frames per second:
 
@@ -51,7 +53,7 @@ The sketch emits newline-delimited JSON at 115200 baud, five frames per second:
 {"seq":1,"uptimeMs":200,"ax":0.1,"ay":0.2,"az":1.0,"gx":0.0,"gy":0.0,"gz":0.0}
 ```
 
-Acceleration is in g, gyroscope values in degrees/second. The browser summarizes the latest reading once per second, reconstructs partial lines, discards malformed data and shows stale status after five seconds without readings. Real motion is labeled **Live device motion**. HR, BP, RR, SpO2, temperature and GCS are **Simulated**. This board does not measure those patient vitals.
+Acceleration is in g, gyroscope values in degrees/second. The retained parser reconstructs partial lines and rejects malformed frames. HR, BP, RR, SpO2, temperature and GCS are **Simulated**. This board does not measure those patient vitals.
 
 The protocol parser and backend isolation are tested. Compilation/upload and physical movement require the actual board and were not verified during the automated build.
 
@@ -71,8 +73,9 @@ All changes use JSON POST bodies; snapshots use GET. Typed commands are defined 
 | --- | --- |
 | `POST /api/sessions` | Create a fictional encounter session |
 | `GET /api/sessions/:id` | Encounter, assignments, telemetry and public configuration |
-| `POST /api/sessions/:id/notes` | Autosave note, reported age and ETA with expected revision |
+| `POST /api/sessions/:id/notes` | Autosave optional note, age, ETA and reported blood type with expected revision |
 | `POST /api/sessions/:id/observations` | Add simulated observations; missing values may be null |
+| `POST /api/sessions/:id/temperature` | Save a settled demo temperature only; preserve other observations and reject stale revisions |
 | `POST /api/sessions/:id/evaluate` | Live Gemini evaluation or explicit rehearsal |
 | `POST /api/sessions/:id/edit-plan` | Lead-reviewed proposal creates a new draft ID |
 | `POST /api/sessions/:id/approve` | Lead approval, atomic reservation and dispatch |
